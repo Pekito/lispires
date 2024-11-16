@@ -81,7 +81,8 @@ module Parser =
         let lambda inputChars = Some (inputChars, c)
         Parser lambda
 
-    let liftToParser2 funcToLift paramAsParser1 paramAsParser2 =
+    let liftToParser2 
+        funcToLift paramAsParser1 paramAsParser2 =
             (pureParser funcToLift) <*> paramAsParser1 <*> paramAsParser2
 
     let rec sequenceParser parserList  =
@@ -111,8 +112,25 @@ module Parser =
         let lambda input =
             Some (parseZeroOrMore parser input (input,[]))
         Parser lambda
+    let one parser =
+        let lambda input =
+            match runParser parser input with 
+            | None -> None
+            | Some (remaining, char) ->
+                Some (remaining, [char])
+        Parser lambda
     
+    let concatenateParsers 
+        (listParser) (separatorParser) =
+        let magic a b = a @ b
+        liftToParser2 magic listParser separatorParser
+    let (.+.) = concatenateParsers
     let parseInt = many (anyOf ['0'..'9'])
+    let parseDot = one (createParser '.')
+
+    let parseFloat = 
+        parseInt .+. parseDot .+. parseInt
+
     let charSet = 
         ['a'..'z'] @ ['A'..'Z']
     let parseSymbol = many (anyOf charSet)
@@ -121,12 +139,5 @@ module Parser =
 
     let parseOpening = createParser '('
     let parseClosing = createParser ')'
-
-    let parseDefinition = 
-        parseOpening .*>. parseSpace .*>. parseSymbol .<*. parseSpace .<*. parseClosing
     
-    printfn "Testando" |> ignore
-    "(                   Pedro  ) "
-    |> charListFromString
-    |> runParser parseDefinition
-    |> printfn "%A"
+
