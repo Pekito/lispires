@@ -5,6 +5,7 @@ module Parser =
     type Parser<'a> = Parser of (char list -> (char list * 'a) option)
     
     let charListFromString (str: string) = str |> Seq.toList
+    let stringFromCharList (charList: char list) = charList |> List.map string |> String.concat ""
     let createParser expectedChar =
         let lambda inputChars =
             match inputChars with
@@ -44,7 +45,14 @@ module Parser =
                             -> Some (p2Remaining, (p1Char, p2Char)) 
         Parser lambda
     let (.>>.) = andParse
-    
+    let bind parser binder =
+        let lambda inputChars =
+            match runParser parser inputChars with
+            | None -> None
+            | Some (remaining, result) -> runParser (binder result) remaining
+        Parser lambda
+
+    let (>>=) = bind
     let mapParser mapFunc parser =
         let lambda inputChars =
             match runParser parser inputChars with
@@ -99,7 +107,7 @@ module Parser =
         |> sequenceParser
 
     let rec parseZeroOrMore 
-        (parser: Parser<char>) input (acc: (char list * char list) )=
+        (parser) input (acc )=
         let parseResult = runParser parser input    
         match parseResult with
         | Some (remainingChars, parsedChar)
@@ -112,6 +120,14 @@ module Parser =
         let lambda input =
             Some (parseZeroOrMore parser input (input,[]))
         Parser lambda
+    let oneOrMore parser =
+        let lambda input =
+            let result = parseZeroOrMore parser input (input, [])
+            match result with
+            | (_, []) -> None 
+            | result -> Some result
+        Parser lambda
+    
     let one parser =
         let lambda input =
             match runParser parser input with 
@@ -125,19 +141,47 @@ module Parser =
         let magic a b = a @ b
         liftToParser2 magic listParser separatorParser
     let (.+.) = concatenateParsers
-    let parseInt = many (anyOf ['0'..'9'])
-    let parseDot = one (createParser '.')
 
-    let parseFloat = 
-        parseInt .+. parseDot .+. parseInt
+
+   
+
+    type Atom =
+        | Integer of int
+        | Float of double
+        | Symbol of string
+
+    let intParserToAtom = stringFromCharList >> Int32.Parse >> Integer
+    let floatParserToAtom = stringFromCharList >> Double.Parse >> Float
+    let symbolParserToAtom = stringFromCharList >> Symbol
 
     let charSet = 
-        ['a'..'z'] @ ['A'..'Z']
-    let parseSymbol = many (anyOf charSet)
+        ['a'..'z'] @ ['A'..'Z'] @ ['+'; '-'; '*'; '/']
+    let parseSymbol = oneOrMore (anyOf charSet)
     
     let parseSpace = many (anyOf [' '; '\n'; '\r'])
 
-    let parseOpening = createParser '('
-    let parseClosing = createParser ')'
-    
 
+    let parseInt =  (oneOrMore (anyOf ['0'..'9']))
+    let parseDot = one (createParser '.')
+
+    let parseIntAtom = mapParser intParserToAtom parseInt
+    let parseFloatAtom = 
+        mapParser floatParserToAtom (parseInt .+. parseDot .+. parseInt)
+    let parseSymbolAtom = mapParser symbolParserToAtom parseSymbol
+
+
+
+    let parseBetweenSpaces parser = parseSpace .*>. parser .<*. parseSpace
+    let parseOpening = parseBetweenSpaces (one (createParser '('))
+    let parseClosing = parseBetweenSpaces (one (createParser ')'))
+
+    type SExpression =
+        | Atom of Atom
+        | List of SExpression list
+    let parseAtom = 
+        mapParser SExpression.Atom (parseIntAtom <|> parseFloatAtom <|> parseSymbolAtom)
+    
+    let rec parseExpression =
+        parseOpening .*>. many (parseAtom <|> parseExpression) .<*. parseClosing 
+
+    // "(+ 1 2 3 4)" |> charListFromString |> runParser parseExpression |> printfn "%A"
