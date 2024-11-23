@@ -182,6 +182,11 @@ module Parser =
         mapParser SExpression.Atom (parseIntAtom <|> parseFloatAtom <|> parseSymbolAtom)
     
     let rec parseExpression =
-        parseOpening .*>. many (parseAtom <|> parseExpression) .<*. parseClosing 
+        let lazyParseExpression = lazy (
+            parseOpening .*>. 
+                (mapParser SExpression.List (many (parseBetweenSpaces (parseAtom <|> parseExpression)) ))
+            .<*. parseClosing
+        )
+        Parser (fun input -> runParser (lazyParseExpression.Force()) input)
 
-    // "(+ 1 2 3 4)" |> charListFromString |> runParser parseExpression |> printfn "%A"
+    "(+ 1 2 3 (* 2 3))" |> charListFromString |> runParser parseExpression |> printfn "%A"
