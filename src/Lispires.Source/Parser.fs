@@ -188,5 +188,3 @@ module Parser =
             .<*. parseClosing
         )
         Parser (fun input -> runParser (lazyParseExpression.Force()) input)
-
-    "(+ 1 2 3 (* 2 3))" |> charListFromString |> runParser parseExpression |> printfn "%A"
